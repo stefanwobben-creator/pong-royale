@@ -84,28 +84,22 @@ Bovenin `server.js` staat een `CFG`-blok. Interessant om mee te spelen:
 | `rampStart` / `rampPerSec` | 20 / 0.018 | Vanaf wanneer en hoe snel de bal vanzelf harder gaat |
 | `hypePerCheer` / `superCooldown` | 4 / 12000 | Hoeveel invloed supporters hebben |
 | `maxPlayers` | 8 | Meer spelers = meer wanden (tot 8 is nog te volgen op een telefoon) |
+| `botLevels` | 3 niveaus | Reactietijd, volggedrag en mikfout van de oefenbots |
 
-## Eigen domein: game.stefanwobben.nl
+## Alleen testen: oefenbots
 
-1. Render: open de service, **Settings**, scroll naar **Custom Domains**, klik
-   **+ Add Custom Domain** en vul `game.stefanwobben.nl` in.
-2. Render toont daarna de DNS-regel die je moet aanmaken. Voor een subdomein is dat een CNAME:
+In de lobby ziet de host een niveaukiezer en de knop **+ Oefenbot**. Elke bot is een speler die de
+server zelf aanstuurt: hij krijgt een eigen wand, kleur en levens, en gaat na zijn eliminatie
+supporteren en juichen net als een mens. Zo kun je in je eentje een heel potje spelen.
 
-   | Veld | Waarde |
-   | --- | --- |
-   | Type | CNAME |
-   | Naam / host | `game` |
-   | Waarde | wat Render toont, iets als `pong-royale.onrender.com` (sommige panels willen een punt aan het eind) |
-   | TTL | 300 |
+| Niveau | Reactietijd | Mikfout | Voor wie |
+| --- | --- | --- | --- |
+| Makkelijk | 0.34s | ±10% van de wand | eerste keer spelen, of kinderen |
+| Normaal | 0.17s | ±5% | een eerlijke tegenstander |
+| Sterk | 0.07s | ±2% | testen of het spel wel afloopt |
 
-3. Terug in Render op **Verify** klikken. Het certificaat komt er vanzelf achteraan, meestal binnen
-   een paar minuten.
+Bots voorspellen waar de bal hun wand raakt door hem rechtdoor door te trekken. Ze houden geen
+rekening met stuiteringen tegen andere wanden, dus ze blijven te verslaan.
 
-Een Hobby-workspace bevat twee custom domains zonder extra kosten, inclusief automatisch TLS.
-
-## Bekende beperking van het gratis plan
-
-De service gaat slapen na 15 minuten zonder verkeer en heeft daarna ongeveer een minuut nodig om
-weer op te starten. Open de link dus even voordat je gasten gaan joinen. Wie tijdens het slapen
-verbinding had, wordt eruit gegooid; de client probeert automatisch te herverbinden en krijgt zijn
-eigen wand terug zodra de server er weer is.
+Het kruisje achter een bot haalt hem weer weg. Bots tellen mee voor het minimum van twee spelers,
+maar houden een room niet in leven: zodra de laatste mens weg is, ruimt de server hem op.

@@ -47,6 +47,11 @@ const CFG = {
   cheerCooldown: 350,     // ms per supporter
   countdown: 3,
   roomTTL: 30 * 60 * 1000,
+  botLevels: [
+    { name: 'Makkelijk', reaction: 0.34, gain: 0.60, error: 0.10 },
+    { name: 'Normaal',   reaction: 0.17, gain: 0.85, error: 0.05 },
+    { name: 'Sterk',     reaction: 0.07, gain: 1.00, error: 0.02 },
+  ],
 };
 
 const COLORS = [
@@ -145,14 +150,35 @@ class Room {
     };
     this.players.set(p.id, p);
     this.order.push(p.id);
-    if (!this.hostId) this.hostId = p.id;
+    if (!this.hostId && ws) this.hostId = p.id;
     return p;
   }
 
   removePlayer(id) {
     this.players.delete(id);
     this.order = this.order.filter((x) => x !== id);
-    if (this.hostId === id) this.hostId = this.order[0] || null;
+    if (this.hostId === id) {
+      const next = this.list().find((p) => !p.isBot);
+      this.hostId = next ? next.id : null;
+    }
+  }
+
+  /** a server-driven practice opponent, so one person can test alone */
+  addBot(level) {
+    if (this.phase !== 'lobby') return null;
+    const p = this.addPlayer(null, 'Bot');
+    if (!p) return null;
+    p.isBot = true;
+    p.lvl = CFG.botLevels[Math.max(0, Math.min(CFG.botLevels.length - 1, level | 0))];
+    p.aiTimer = 0;
+    p.aimErr = 0;
+    const n = [...this.players.values()].filter((x) => x.isBot).length;
+    p.name = `Bot ${n} (${p.lvl.name.toLowerCase()})`;
+    return p;
+  }
+
+  humans() {
+    return this.list().filter((p) => !p.isBot);
   }
 
   list() {
@@ -195,6 +221,7 @@ class Room {
         name: p.name,
         color: COLORS[p.colorIdx].hex,
         connected: p.connected,
+        bot: !!p.isBot,
         host: p.id === this.hostId,
       })),
     };
@@ -367,6 +394,7 @@ class Room {
     if (this.phase !== 'playing') return;
 
     this.roundTime += dt;
+    this.stepBots(dt);
     this.stepPaddles(dt);
     this.stepHype(dt);
     this.stepBalls(dt);
@@ -392,6 +420,63 @@ class Room {
     const base = p.superUntil > now ? CFG.paddleHalfSuper : CFG.paddleHalf;
     const shrink = Math.max(0, this.roundTime - CFG.shrinkStart) * CFG.shrinkPerSec;
     return Math.max(CFG.paddleHalfMin, base - shrink);
+  }
+
+  /**
+   * Practice bots. They extrapolate the ball to their own wall plane, which is
+   * good enough to be a real opponent but wrong after a bounce, so they stay
+   * beatable. Reaction time and aim error come from the chosen level.
+   */
+  stepBots(dt) {
+    const A = this.arena;
+    if (!A) return;
+
+    for (const p of this.players.values()) {
+      if (!p.isBot) continue;
+
+      if (!p.alive) {
+        // knocked out: support someone and cheer now and then
+        if (!p.supporting || !(this.players.get(p.supporting) || {}).alive) {
+          const hero = this.alivePlayers()[0];
+          p.supporting = hero ? hero.id : null;
+        }
+        if (p.supporting && Math.random() < dt * 2.2) this.cheer(p);
+        continue;
+      }
+
+      p.aiTimer -= dt;
+      if (p.aiTimer > 0) continue;
+      p.aiTimer = p.lvl.reaction;
+
+      const e = A.edges[p.seat];
+      if (!e) continue;
+
+      // which live ball reaches my wall first?
+      let best = null, bestT = Infinity;
+      for (const b of this.balls) {
+        if (b.dead) continue;
+        const vn = b.vx * e.nx + b.vy * e.ny;
+        if (vn <= 0.001) continue;                       // moving away from me
+        const s = b.x * e.nx + b.y * e.ny - A.apothem;   // negative = inside
+        const t = -s / vn;
+        if (t > 0 && t < bestT) { bestT = t; best = b; }
+      }
+
+      if (!best) {
+        // nothing incoming: drift back to the middle
+        p.target += (0.5 - p.target) * Math.min(1, dt * 2);
+        continue;
+      }
+
+      const ix = best.x + best.vx * bestT;
+      const iy = best.y + best.vy * bestT;
+      let hit = ((ix - e.ax) * e.dx + (iy - e.ay) * e.dy) / e.len;
+      hit = Math.max(0, Math.min(1, hit));
+
+      p.aimErr = (Math.random() * 2 - 1) * p.lvl.error;
+      const want = hit + p.aimErr;
+      p.target = Math.max(0, Math.min(1, 0.5 + (want - 0.5) * p.lvl.gain));
+    }
   }
 
   stepPaddles(dt) {
@@ -781,6 +866,24 @@ wss.on('connection', (ws) => {
         break;
       }
 
+      case 'addbot': {
+        if (!room || !me || me.id !== room.hostId) return;
+        const p = room.addBot(m.level);
+        if (!p) return fail(ws, room.phase === 'lobby' ? 'Deze room zit vol' : 'Kan alleen in de lobby');
+        room.pushLobby();
+        break;
+      }
+
+      case 'delbot': {
+        if (!room || !me || me.id !== room.hostId) return;
+        if (room.phase !== 'lobby') return;
+        const b = room.players.get(String(m.id || ''));
+        if (!b || !b.isBot) return;
+        room.removePlayer(b.id);
+        room.pushLobby();
+        break;
+      }
+
       case 'start': {
         if (!room || !me || me.id !== room.hostId) return;
         if (room.phase !== 'lobby') return;
@@ -834,15 +937,15 @@ wss.on('connection', (ws) => {
       room.removePlayer(me.id);
     } else if (me.alive) {
       // a dropped player stops moving; if nobody is left the round ends
-      const stillHere = room.alivePlayers().filter((p) => p.connected);
+      const stillHere = room.alivePlayers().filter((p) => p.connected && !p.isBot);
       if (stillHere.length === 0) room.backToLobby();
     }
     if (room.hostId === me.id && !me.connected) {
-      const next = room.list().find((p) => p.connected);
+      const next = room.humans().find((p) => p.connected);
       room.hostId = next ? next.id : room.hostId;
     }
     room.pushLobby();
-    const anyone = room.list().some((p) => p.connected);
+    const anyone = room.humans().some((p) => p.connected);
     if (!anyone) {
       room.stopLoop();
       room.touched = Date.now();
@@ -859,7 +962,7 @@ setInterval(() => {
   });
   const now = Date.now();
   for (const [code, r] of rooms) {
-    const anyone = r.list().some((p) => p.connected);
+    const anyone = r.humans().some((p) => p.connected);
     if (!anyone && now - r.touched > CFG.roomTTL) {
       r.stopLoop();
       rooms.delete(code);

@@ -90,16 +90,32 @@ const GFX = (() => {
     resize();
     window.addEventListener('resize', resize);
     window.addEventListener('orientationchange', () => setTimeout(resize, 200));
+    if (window.ResizeObserver) new ResizeObserver(() => resize()).observe(canvas);
   }
 
   function resize() {
     if (!S.canvas) return;
+    const w = S.canvas.clientWidth, h = S.canvas.clientHeight;
+    if (w < 2 || h < 2) {
+      // scherm staat nog op display:none -> later opnieuw proberen
+      if (!S.resizePending) {
+        S.resizePending = true;
+        requestAnimationFrame(() => { S.resizePending = false; resize(); });
+      }
+      return;
+    }
     S.dpr = S.lowQ ? 1 : Math.min(window.devicePixelRatio || 1, 2);
-    S.W = S.canvas.clientWidth; S.H = S.canvas.clientHeight;
+    S.W = w; S.H = h;
     S.canvas.width = Math.round(S.W * S.dpr);
     S.canvas.height = Math.round(S.H * S.dpr);
-    S.scale = Math.min(S.W * 0.46, S.H * 0.40);
-    S.cx = S.W / 2; S.cy = S.H * (S.spect ? 0.33 : 0.47);
+    // ruimte reserveren voor de HUD boven en de hype-balk of het supporterpaneel onder,
+    // daarna de arena zo groot maken dat naamlabels er nog naast passen
+    const top = 56;
+    const bottom = S.spect ? Math.min(360, S.H * 0.42) : 64;
+    const usable = Math.max(90, S.H - top - bottom);
+    S.scale = Math.max(40, Math.min((S.W / 2 - 20) / 1.15, (usable / 2 - 20) / 1.15));
+    S.cx = S.W / 2;
+    S.cy = top + usable / 2;
     if (S.stars.length === 0) {
       for (let i = 0; i < 70; i++) {
         S.stars.push({ x: Math.random(), y: Math.random(), r: Math.random() * 1.6 + .3, p: Math.random() * 6.28 });
@@ -568,7 +584,12 @@ const GFX = (() => {
 
     const ctx = S.ctx;
     if (!ctx) return;
+    if (S.frames % 30 === 0 &&
+        (S.W !== S.canvas.clientWidth || S.H !== S.canvas.clientHeight)) resize();
+    if (S.W < 2 || S.H < 2) return;
     ctx.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
     drawBackground(ctx, now);
     if (!S.arena) return;
 

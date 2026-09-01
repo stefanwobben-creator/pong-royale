@@ -71,9 +71,10 @@ function handle(m) {
 
     case 'setup':
       state.setup = m;
+      show('game');            // eerst zichtbaar, anders meet het canvas 0x0
       GFX.setup(m, state.me.id);
+      GFX.resize();
       GFX.start();
-      show('game');
       $('supportPanel').classList.add('hidden');
       state.supporting = null;
       state.alive = true;
@@ -120,18 +121,28 @@ function renderLobby(m) {
     row.innerHTML = `
       <span class="dot" style="background:${p.color};box-shadow:0 0 12px ${p.color}"></span>
       <span class="pname">${escapeHtml(p.name)}</span>
+      ${p.bot ? '<span class="tag">bot</span>' : ''}
       ${p.host ? '<span class="tag">host</span>' : ''}
       ${p.id === (state.me && state.me.id) ? '<span class="tag you">jij</span>' : ''}
       ${p.connected ? '' : '<span class="tag">weg</span>'}`;
+    if (p.bot && state.me && m.hostId === state.me.id) {
+      const x = document.createElement('button');
+      x.className = 'kick';
+      x.textContent = '\u00d7';
+      x.title = 'bot weghalen';
+      x.onclick = () => send({ t: 'delbot', id: p.id });
+      row.appendChild(x);
+    }
     list.appendChild(row);
   });
 
   const iAmHost = state.me && m.hostId === state.me.id;
   const enough = m.players.length >= m.minPlayers;
+  $('botRow').classList.toggle('hidden', !iAmHost);
   $('btnStart').style.display = iAmHost ? '' : 'none';
   $('btnStart').disabled = !enough;
   $('startHint').textContent = iAmHost
-    ? (enough ? 'Iedereen binnen? Druk op start.' : `Minimaal ${m.minPlayers} spelers nodig.`)
+    ? (enough ? 'Iedereen binnen? Druk op start.' : `Minimaal ${m.minPlayers} spelers. Zet er een oefenbot bij om alleen te testen.`)
     : 'Wachten tot de host start...';
 
   // colours
@@ -372,6 +383,7 @@ function bindUI() {
   });
 
   $('btnStart').onclick = () => { SFX.boot(); send({ t: 'start' }); };
+  $('btnAddBot').onclick = () => send({ t: 'addbot', level: Number($('botLevel').value) });
   $('btnAgain').onclick = () => { CEREMONY.stop(); send({ t: 'again' }); };
   $('btnHome').onclick = () => { store.del('pr_token'); location.href = location.pathname; };
   $('btnLeave').onclick = () => { store.del('pr_token'); location.href = location.pathname; };
