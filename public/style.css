@@ -241,3 +241,36 @@ body{
   font-size:13px;line-height:1.5;color:var(--dim);text-align:center;
 }
 .sharebox b{color:var(--ink)}
+
+/* ---------------- compactere lobby ---------------- */
+#lobby{justify-content:flex-start;gap:10px;overflow-y:auto;padding-top:max(14px,env(safe-area-inset-top))}
+#lobby .bigcode{font-size:clamp(40px,11vw,60px)}
+#lobby .sharebox{font-size:12px;padding:8px 12px;line-height:1.4}
+#lobby .players{max-height:none;flex:0 1 auto}
+#lobby .swatch{width:26px;height:26px}
+.lobby-onder{display:flex;gap:8px;justify-content:center}
+
+/* ---------------- overlays ---------------- */
+.sheet{
+  position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
+  padding:20px;background:rgba(3,4,12,.82);backdrop-filter:blur(4px);
+}
+.sheet.hidden{display:none}
+.sheet-card{
+  width:min(420px,100%);display:flex;flex-direction:column;gap:10px;
+  background:linear-gradient(160deg,rgba(22,28,54,.98),rgba(10,13,30,.98));
+  border:1px solid var(--line);border-radius:20px;padding:20px;
+  box-shadow:0 24px 60px rgba(0,0,0,.6);
+}
+.sheet-title{font-family:'Orbitron',sans-serif;font-size:14px;letter-spacing:.2em;color:var(--dim);text-align:center;margin-bottom:4px}
+
+.uitleg-card{gap:14px}
+.uitleg-kop{font-family:'Orbitron',sans-serif;font-size:clamp(20px,6vw,26px);line-height:1.15;color:#fff}
+.uitleg-tekst{font-size:16px;line-height:1.5;color:var(--ink)}
+.uitleg-tekst b{color:var(--acc)}
+.uitleg-beeld{display:flex;justify-content:center;padding:4px 0}
+.uitleg-knoppen{display:flex;gap:10px;align-items:center}
+.uitleg-knoppen .btn.primary{flex:1}
+.uitleg-punten{display:flex;gap:6px;justify-content:center}
+.uitleg-punten span{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.2)}
+.uitleg-punten span.on{background:var(--acc);box-shadow:0 0 10px var(--acc)}

@@ -16,7 +16,7 @@ const state = {
   lobby: null, setup: null, myColor: '#00e5ff',
   supporting: null, alive: true, lives: 3,
   reconnectTries: 0, sending: false,
-  gen: 0, busy: false,
+  gen: 0, busy: false, weg: false,
 };
 
 /* ------------------------------------------------------------ storage */
@@ -124,6 +124,8 @@ function send(msg) {
 
 /* ------------------------------------------------------------ handlers */
 function handle(m) {
+  // na het verlaten van een potje stromen er nog berichten binnen; negeren
+  if (state.weg && m.t !== 'joined') return;
   switch (m.t) {
     case 'joined':
       state.me = m.you;
@@ -140,7 +142,11 @@ function handle(m) {
     case 'lobby':
       state.lobby = m;
       state.phase = m.phase;
-      if (m.phase === 'lobby') { show('lobby'); GFX.stop(); CEREMONY.stop(); }
+      if (m.phase === 'lobby') {
+        show('lobby'); GFX.stop(); CEREMONY.stop();
+        $('gameMenu').classList.add('hidden');
+        if (!uitlegGezien()) toonUitleg(0);
+      }
       renderLobby(m);
       break;
 
@@ -170,6 +176,14 @@ function handle(m) {
 
     case 'over':
       showCeremony(m);
+      break;
+
+    case 'left':
+      vergeetSessie();
+      state.weg = true;
+      GFX.stop(); CEREMONY.stop();
+      $('gameMenu').classList.add('hidden');
+      show('home');
       break;
 
     case 'error':
@@ -267,6 +281,7 @@ function buildHud() {
 }
 
 function onState(m) {
+  if (!state.me || !state.setup) return;
   state.phase = m.ph;
   GFX.update(m);
   GFX.handleEvents(m.ev);
@@ -445,8 +460,63 @@ function doCheer() {
   if (navigator.vibrate) navigator.vibrate(12);
 }
 
+/* ------------------------------------------------------------ uitleg */
+const STAPPEN = [
+  {
+    kop: 'Jij verdedigt een wand',
+    tekst: 'Jouw wand ligt altijd <b>onderaan</b> je scherm. Sleep je vinger over het scherm om je peddel heen en weer te bewegen. Op een laptop: pijltjestoetsen of A en D.',
+    beeld: '<svg width="150" height="130" viewBox="0 0 150 130" aria-hidden="true">' +
+      '<polygon points="75,14 141,116 9,116" fill="rgba(40,80,180,.25)" stroke="rgba(150,205,255,.45)" stroke-width="2"/>' +
+      '<line x1="52" y1="116" x2="98" y2="116" stroke="#00e5ff" stroke-width="8" stroke-linecap="round"/>' +
+      '<circle cx="80" cy="66" r="7" fill="#fff"/>' +
+      '<path d="M52 128 H98" stroke="rgba(255,255,255,.35)" stroke-width="2" stroke-dasharray="4 4"/>' +
+      '<path d="M46 128 l7 -5 v10 z M104 128 l-7 -5 v10 z" fill="rgba(255,255,255,.5)"/>' +
+      '</svg>',
+  },
+  {
+    kop: 'Drie levens, dan supporter',
+    tekst: 'Glipt de bal langs je peddel, dan ben je een leven kwijt. Bij <b>nul</b> lig je eruit, kies je een held en juich je hem naar de winst. Wie als laatste overblijft, wint.',
+    beeld: '<svg width="150" height="80" viewBox="0 0 150 80" aria-hidden="true">' +
+      '<circle cx="42" cy="26" r="9" fill="#00e5ff"/><circle cx="75" cy="26" r="9" fill="#00e5ff"/>' +
+      '<circle cx="108" cy="26" r="9" fill="rgba(255,255,255,.16)"/>' +
+      '<text x="75" y="66" text-anchor="middle" fill="#ffd23f" font-family="Rajdhani,sans-serif" font-size="17" font-weight="700">JUICH!</text>' +
+      '</svg>',
+  },
+];
+let uitlegStap = 0;
+
+function uitlegGezien() {
+  try { return localStorage.getItem('pr_uitleg') === '1'; } catch (_) { return true; }
+}
+function uitlegOnthouden() {
+  try { localStorage.setItem('pr_uitleg', '1'); } catch (_) {}
+}
+
+function toonUitleg(vanaf) {
+  uitlegStap = vanaf || 0;
+  tekenUitleg();
+  $('uitleg').classList.remove('hidden');
+}
+
+function tekenUitleg() {
+  const s = STAPPEN[uitlegStap];
+  $('uitlegStap').innerHTML =
+    '<div class="uitleg-kop">' + s.kop + '</div>' +
+    '<div class="uitleg-beeld">' + s.beeld + '</div>' +
+    '<div class="uitleg-tekst">' + s.tekst + '</div>';
+  $('btnUitlegNext').textContent = uitlegStap === STAPPEN.length - 1 ? 'Duidelijk' : 'Volgende';
+  const punten = document.querySelectorAll('.uitleg-punten span');
+  punten.forEach((p, i) => p.classList.toggle('on', i === uitlegStap));
+}
+
+function sluitUitleg() {
+  $('uitleg').classList.add('hidden');
+  uitlegOnthouden();
+}
+
 /* ------------------------------------------------------------ buttons */
 function vergeetSessie() {
+  state.weg = false;
   state.me = null;
   state.code = null;
   state.reconnectTries = 0;
@@ -515,8 +585,23 @@ function bindUI() {
   $('btnAddBot').onclick = () => send({ t: 'addbot', level: Number($('botLevel').value) });
   $('btnAgain').onclick = () => { CEREMONY.stop(); send({ t: 'again' }); };
   $('btnHome').onclick = () => { store.del('pr_token'); location.href = location.pathname; };
-  $('btnLeave').onclick = () => { store.del('pr_token'); location.href = location.pathname; };
+  $('btnLeave').onclick = () => { send({ t: 'leave' }); vergeetSessie(); state.weg = true; show('home'); };
   $('btnCheer').onclick = doCheer;
+
+  $('btnMenu').onclick = () => {
+    const host = state.lobby && state.me && state.lobby.hostId === state.me.id;
+    $('btnAbort').classList.toggle('hidden', !host);
+    $('gameMenu').classList.remove('hidden');
+  };
+  $('btnCloseMenu').onclick = () => $('gameMenu').classList.add('hidden');
+  $('btnAbort').onclick = () => { $('gameMenu').classList.add('hidden'); send({ t: 'abort' }); };
+  $('btnQuit').onclick = () => { $('gameMenu').classList.add('hidden'); send({ t: 'leave' }); };
+
+  $('btnUitleg').onclick = () => toonUitleg(0);
+  $('btnUitlegSkip').onclick = sluitUitleg;
+  $('btnUitlegNext').onclick = () => {
+    if (uitlegStap < STAPPEN.length - 1) { uitlegStap++; tekenUitleg(); } else sluitUitleg();
+  };
 
   $('btnSound').onclick = () => {
     const on = SFX.toggle();

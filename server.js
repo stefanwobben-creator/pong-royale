@@ -113,6 +113,7 @@ class Room {
     this.roundTime = 0;
     this.countdownLeft = 0;
     this.respawnTimer = 0;
+    this.zonderBal = 0;          // seconden zonder levende bal
     this.extraBallDone = false;
     this.timer = null;
     this.lastTick = 0;
@@ -158,7 +159,7 @@ class Room {
     this.players.delete(id);
     this.order = this.order.filter((x) => x !== id);
     if (this.hostId === id) {
-      const next = this.list().find((p) => !p.isBot);
+      const next = this.list().find((p) => !p.isBot && !p.gone);
       this.hostId = next ? next.id : null;
     }
   }
@@ -178,7 +179,7 @@ class Room {
   }
 
   humans() {
-    return this.list().filter((p) => !p.isBot);
+    return this.list().filter((p) => !p.isBot && !p.gone);
   }
 
   list() {
@@ -403,6 +404,19 @@ class Room {
       this.extraBallDone = true;
       this.spawnBall();
       this.events.push({ k: 'newball' });
+    }
+
+    // Vangnet: wat er ook misgaat, een lopend potje staat nooit stil.
+    if (this.balls.filter((b) => !b.dead).length === 0) {
+      this.zonderBal += dt;
+      if (this.zonderBal > 3) {
+        this.zonderBal = 0;
+        this.respawnTimer = 0;
+        this.spawnBall();
+        this.events.push({ k: 'newball' });
+      }
+    } else {
+      this.zonderBal = 0;
     }
 
     if (this.respawnTimer > 0) {
@@ -881,6 +895,31 @@ wss.on('connection', (ws) => {
         if (!b || !b.isBot) return;
         room.removePlayer(b.id);
         room.pushLobby();
+        break;
+      }
+
+      case 'leave': {
+        if (!room || !me) return;
+        if (room.phase === 'lobby') {
+          room.removePlayer(me.id);
+        } else if (me.alive) {
+          me.alive = false;
+          me.lives = 0;
+          me.superUntil = 0;
+          room.eliminationOrder.push(me.id);
+          room.events.push({ k: 'elim', p: me.id });
+          room.checkWin();
+        }
+        me.gone = true;
+        room.send(me, { t: 'left' });
+        room.pushLobby();
+        break;
+      }
+
+      case 'abort': {
+        if (!room || !me || me.id !== room.hostId) return;
+        if (room.phase === 'lobby') return;
+        room.backToLobby();
         break;
       }
 

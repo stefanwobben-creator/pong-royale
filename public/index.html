@@ -76,7 +76,10 @@
     </div>
     <button id="btnStart" class="btn primary">Start het potje</button>
     <div id="startHint" class="hint"></div>
-    <button id="btnLeave" class="btn ghost tiny">Verlaten</button>
+    <div class="lobby-onder">
+      <button id="btnUitleg" class="btn ghost tiny">Hoe werkt het?</button>
+      <button id="btnLeave" class="btn ghost tiny">Verlaten</button>
+    </div>
   </div>
 </section>
 
@@ -88,6 +91,7 @@
     <div id="hudName" class="hud-name"></div>
     <div id="hudLives" class="hud-lives"></div>
     <button id="btnSound" class="soundbtn" aria-label="geluid">&#9835;</button>
+    <button id="btnMenu" class="soundbtn" aria-label="menu">&#9776;</button>
   </div>
 
   <div id="hypeWrap" class="hype">
@@ -105,6 +109,15 @@
     <button id="btnCheer" class="cheer hidden">JUICH!</button>
     <div class="support-hint">Blijf tappen. Vol = jouw held wordt <b>SUPERCHARGED</b>.</div>
   </div>
+
+  <div id="gameMenu" class="sheet hidden">
+    <div class="sheet-card">
+      <div class="sheet-title">Potje</div>
+      <button id="btnAbort" class="btn hidden">Afbreken voor iedereen</button>
+      <button id="btnQuit" class="btn">Ik stop ermee</button>
+      <button id="btnCloseMenu" class="btn ghost">Verder spelen</button>
+    </div>
+  </div>
 </section>
 
 <!-- ======================= CEREMONY ======================= -->
@@ -119,6 +132,17 @@
     <button id="btnHome" class="btn ghost tiny">Naar begin</button>
   </div>
 </section>
+
+<div id="uitleg" class="sheet hidden">
+  <div class="sheet-card uitleg-card">
+    <div id="uitlegStap"></div>
+    <div class="uitleg-knoppen">
+      <button id="btnUitlegSkip" class="btn ghost tiny">Overslaan</button>
+      <button id="btnUitlegNext" class="btn primary">Volgende</button>
+    </div>
+    <div class="uitleg-punten"><span></span><span></span></div>
+  </div>
+</div>
 
 <script src="game.js"></script>
 <script src="app.js"></script>

@@ -103,3 +103,20 @@ rekening met stuiteringen tegen andere wanden, dus ze blijven te verslaan.
 
 Het kruisje achter een bot haalt hem weer weg. Bots tellen mee voor het minimum van twee spelers,
 maar houden een room niet in leven: zodra de laatste mens weg is, ruimt de server hem op.
+
+## Uit een potje stappen
+
+Tijdens het spel zit er rechtsboven een menuknop.
+
+- **Ik stop ermee**: je wandt wordt een muur, de rest speelt door en jij bent terug op het beginscherm.
+- **Afbreken voor iedereen** (alleen de host): iedereen gaat terug naar de lobby.
+
+De server heeft daarnaast een vangnet: staat een lopend potje langer dan drie seconden zonder bal,
+dan zet hij er vanzelf een nieuwe in. Wat er ook misgaat, je kunt niet meer vastlopen op een stil
+speelveld.
+
+## Uitleg voor nieuwe spelers
+
+Wie voor het eerst in een lobby komt, krijgt twee korte schermen: hoe je je peddel bestuurt en hoe
+levens en supporteren werken. Dat wordt onthouden in `localStorage`, dus de tweede keer krijg je ze
+niet meer. In de lobby staat "Hoe werkt het?" om ze opnieuw te bekijken.
