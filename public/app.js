@@ -338,7 +338,7 @@ function bindInput() {
     let d = 0;
     if (keys.ArrowLeft || keys.a || keys.A) d -= 1;
     if (keys.ArrowRight || keys.d || keys.D) d += 1;
-    if (d) GFX.setLocalTarget(GFX.getLocalTarget() + d * 0.028);
+    if (d) GFX.nudgeTarget(d, 0.028);
   }, 16);
 
   // send input at ~30Hz

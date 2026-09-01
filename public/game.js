@@ -176,6 +176,25 @@ const GFX = (() => {
   }
 
   function setLocalTarget(t) { S.localTarget = Math.max(0, Math.min(1, t)); }
+
+  /**
+   * Welke kant op beweegt de peddel op het SCHERM als t oploopt? Hangt af van de
+   * rotatie van het beeld, dus uitrekenen in plaats van vastzetten.
+   * +1 = oplopende t is naar rechts, -1 = naar links.
+   */
+  function screenDirSign() {
+    if (!S.arena) return 1;
+    const e = S.arena.edges.find((x) => x.i === S.viewSeat);
+    if (!e) return 1;
+    const dx = e.bx - e.ax, dy = e.by - e.ay;
+    const sx = dx * Math.cos(S.rot) - dy * Math.sin(S.rot);
+    return sx < 0 ? -1 : 1;
+  }
+
+  /** toets- of stickinvoer: dir is +1 voor rechts op het scherm, -1 voor links */
+  function nudgeTarget(dir, amount) {
+    setLocalTarget(S.localTarget + dir * amount * screenDirSign());
+  }
   function getLocalTarget() { return S.localTarget; }
 
   /* ---------- coordinate helpers ---------- */
@@ -655,6 +674,7 @@ const GFX = (() => {
   return {
     initBoard, setup, update, start, stop, resize,
     setLocalTarget, getLocalTarget, paddleParamFromScreen, setSpectator,
+    nudgeTarget, screenDirSign,
     handleEvents: (l) => handleEvents(l, bigCb), onAnnounce,
     setViewSeat,
     players: () => S.players,
