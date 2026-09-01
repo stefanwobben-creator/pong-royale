@@ -29,17 +29,20 @@
   </div>
 
   <div class="card">
-    <label class="lbl">Jouw naam</label>
-    <input id="nameInput" class="inp" maxlength="12" placeholder="Speler" autocomplete="off" spellcheck="false">
+    <label class="lbl" for="codeInput">1. Typ de code van het spel</label>
+    <input id="codeInput" class="inp code" maxlength="4" placeholder="&#183;&#183;&#183;&#183;"
+           autocomplete="off" spellcheck="false" autocapitalize="characters"
+           autocorrect="off" enterkeyhint="go">
 
-    <button id="btnCreate" class="btn primary">Nieuw spel starten</button>
+    <label class="lbl" for="nameInput">2. Hoe heet je?</label>
+    <input id="nameInput" class="inp" maxlength="12" placeholder="Jouw naam"
+           autocomplete="off" spellcheck="false" enterkeyhint="go">
 
-    <div class="divider"><span>of doe mee</span></div>
-
-    <input id="codeInput" class="inp code" maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false" inputmode="text">
-    <button id="btnJoin" class="btn">Meedoen</button>
+    <button id="btnJoin" class="btn primary">Meedoen</button>
     <div id="homeErr" class="err"></div>
   </div>
+
+  <button id="btnCreate" class="btn ghost host">Ik ben de host: nieuw spel starten</button>
 
   <div class="foot">Werkt op elke telefoon. Geen app, geen account.</div>
 </section>
@@ -47,14 +50,16 @@
 <!-- ======================= LOBBY ======================= -->
 <section id="lobby" class="screen">
   <div class="lobby-head">
-    <div class="lbl">Code om mee te doen</div>
+    <div class="lbl">Deze code typen ze in</div>
     <div id="lobbyCode" class="bigcode">----</div>
     <div class="lobby-actions">
-      <button id="btnShare" class="btn tiny">Link delen</button>
+      <button id="btnShare" class="btn tiny">Uitnodiging kopieren</button>
       <button id="btnQR" class="btn tiny ghost">QR-code</button>
     </div>
     <div id="qrWrap" class="qr hidden"><div id="qr"></div><div class="qr-url" id="qrUrl"></div></div>
   </div>
+
+  <div id="shareBox" class="sharebox"></div>
 
   <div class="lbl spread">Spelers <span id="playerCount"></span></div>
   <div id="playerList" class="players"></div>

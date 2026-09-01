@@ -20,6 +20,11 @@ const state = {
 };
 
 /* ------------------------------------------------------------ storage */
+const namStore = {
+  get() { try { return localStorage.getItem('pr_naam') || ''; } catch (_) { return ''; } },
+  set(v) { try { localStorage.setItem('pr_naam', v); } catch (_) {} },
+};
+
 const store = {
   get(k, d) { try { return sessionStorage.getItem(k) ?? d; } catch (_) { return d; } },
   set(k, v) { try { sessionStorage.setItem(k, v); } catch (_) {} },
@@ -170,7 +175,12 @@ function handle(m) {
     case 'error':
       busy(false);
       setNet(null);
-      $('homeErr').textContent = m.msg;
+      $('homeErr').textContent =
+        m.msg === 'Die code bestaat niet'
+          ? 'Die code bestaat niet. Kijk of je hem goed hebt overgetikt en of de host het spel nog open heeft.'
+          : m.msg === 'Dit potje is al bezig'
+            ? 'Dit potje is al begonnen. Vraag de host om na dit potje een nieuwe te starten.'
+            : m.msg;
       if (!state.me) {
         // a stale rejoin: forget it so we do not loop
         state.code = null;
@@ -184,6 +194,11 @@ function handle(m) {
 /* ------------------------------------------------------------ lobby UI */
 function renderLobby(m) {
   $('lobbyCode').textContent = m.code;
+  const uitleg = $('shareBox');
+  if (uitleg) {
+    uitleg.innerHTML = 'Laat iedereen naar <b>' + escapeHtml(location.host) +
+      '</b> gaan en daar de code <b>' + escapeHtml(m.code) + '</b> intypen.';
+  }
   $('playerCount').textContent = `${m.players.length}/${m.maxPlayers}`;
   const list = $('playerList');
   list.innerHTML = '';
@@ -445,7 +460,7 @@ function toonFout(msg) {
 
 function bindUI() {
   const nameEl = $('nameInput');
-  nameEl.value = store.get('pr_name', '') || '';
+  nameEl.value = namStore.get() || store.get('pr_name', '') || '';
 
   $('btnCreate').onclick = () => {
     if (state.busy) return;
@@ -456,21 +471,45 @@ function bindUI() {
     connect(() => send({ t: 'create', name: nameEl.value }), toonFout);
   };
 
-  $('btnJoin').onclick = () => {
+  function doeMee() {
     if (state.busy) return;
     SFX.boot();
     const code = $('codeInput').value.trim().toUpperCase();
-    if (code.length < 4) { $('homeErr').textContent = 'Vul de code van 4 tekens in'; return; }
+    if (code.length < 4) {
+      $('homeErr').textContent = 'Vul eerst de code van 4 tekens in die de host je gaf.';
+      $('codeInput').focus();
+      return;
+    }
+    const naam = nameEl.value.trim();
+    if (naam) namStore.set(naam);
     $('homeErr').textContent = '';
     vergeetSessie();
     state.code = code;
     busy(true, 'join');
-    connect(() => send({ t: 'join', code, name: nameEl.value }), toonFout);
-  };
+    connect(() => send({ t: 'join', code, name: naam }), toonFout);
+  }
 
-  $('codeInput').addEventListener('input', (e) => {
-    e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+  $('btnJoin').onclick = doeMee;
+
+  // codes bevatten nooit I, O, 0 of 1, dus die filteren we er meteen uit
+  const CODE_TEKENS = /[^ABCDEFGHJKLMNPQRSTUVWXYZ23456789]/g;
+  let laatsteAuto = '';
+
+  const codeEl = $('codeInput');
+  codeEl.addEventListener('input', (e) => {
+    e.target.value = e.target.value.toUpperCase().replace(CODE_TEKENS, '').slice(0, 4);
+    $('homeErr').textContent = '';
+    if (e.target.value.length === 4 && e.target.value !== laatsteAuto) {
+      laatsteAuto = e.target.value;
+      codeEl.blur();                      // toetsenbord weg, dan zie je wat er gebeurt
+      setTimeout(() => doeMee(), 150);    // vier tekens = meteen naar binnen
+    }
   });
+
+  const opEnter = (e) => { if (e.key === 'Enter') { e.preventDefault(); doeMee(); } };
+  codeEl.addEventListener('keydown', opEnter);
+  nameEl.addEventListener('keydown', opEnter);
+  nameEl.addEventListener('change', () => namStore.set(nameEl.value.trim()));
 
   $('btnStart').onclick = () => { SFX.boot(); send({ t: 'start' }); };
   $('btnAddBot').onclick = () => send({ t: 'addbot', level: Number($('botLevel').value) });
@@ -485,10 +524,13 @@ function bindUI() {
   };
 
   $('btnShare').onclick = async () => {
-    const url = joinUrl();
+    const bericht = uitnodiging();
     try {
-      if (navigator.share) await navigator.share({ title: 'PONG ROYALE', text: `Doe mee! Code ${state.code}`, url });
-      else { await navigator.clipboard.writeText(url); $('startHint').textContent = 'Link gekopieerd!'; }
+      if (navigator.share) await navigator.share({ text: bericht });
+      else {
+        await navigator.clipboard.writeText(bericht);
+        $('startHint').textContent = 'Uitnodiging gekopieerd, plak hem in de groepsapp.';
+      }
     } catch (_) {}
   };
 
@@ -504,6 +546,18 @@ function bindUI() {
     s.onerror = () => { $('qrUrl').textContent = joinUrl() + ' (QR kon niet laden)'; };
     document.head.appendChild(s);
   };
+}
+
+function uitnodiging() {
+  const site = location.host + (location.pathname === '/' ? '' : location.pathname);
+  return [
+    'Doe mee met PONG ROYALE',
+    '',
+    '1. Ga naar ' + site,
+    '2. Typ de code: ' + (state.code || ''),
+    '',
+    'Meer hoef je niet te doen.',
+  ].join('\n');
 }
 
 function joinUrl() {

@@ -78,6 +78,29 @@ server.listen(PORT, async () => {
     `scherm=${na.actief} code=${na.lobbycode} verwacht=${stefan.code}`);
   note(na.spelers.length === 3, 'de nieuwe room heeft nu drie spelers', JSON.stringify(na.spelers));
 
+  /* ---------- 2b. code intikken doet je vanzelf meedoen ---------- */
+  const tik = await mk('Tikker');
+  await tik.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'domcontentloaded' });
+  await tik.fill('#nameInput', 'Ilona');
+  await tik.click('#codeInput');
+  await tik.keyboard.type('oo' + stefan.code.toLowerCase(), { delay: 60 });  // o's zitten niet in codes
+  await wait(2000);
+  na = await tik.evaluate(scherm);
+  note(na.actief === 'lobby' && na.lobbycode === stefan.code,
+    'code intikken brengt je zonder knop naar binnen',
+    `scherm=${na.actief} code=${na.lobbycode} fout="${na.fout}"`);
+  note(na.spelers.includes('Ilona'), 'onmogelijke tekens zijn genegeerd', JSON.stringify(na.spelers));
+
+  /* ---------- 2c. verkeerde code geeft uitleg ---------- */
+  const mis = await mk('Mistik');
+  await mis.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'domcontentloaded' });
+  await mis.click('#codeInput');
+  await mis.keyboard.type('ZZZZ', { delay: 60 });
+  await wait(1800);
+  na = await mis.evaluate(scherm);
+  note(na.actief === 'home' && /bestaat niet/.test(na.fout),
+    'onbekende code geeft uitleg in plaats van niks', `"${na.fout}"`);
+
   /* ---------- 3. server antwoordt niet ---------- */
   const dood = await mk('Offline');
   await dood.goto(`http://127.0.0.1:${PORT}/?c=${stefan.code}`, { waitUntil: 'domcontentloaded' });
