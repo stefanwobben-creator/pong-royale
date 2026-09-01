@@ -1,0 +1,441 @@
+/* =====================================================================
+   PONG ROYALE - client: networking, screens, input
+   ===================================================================== */
+
+const $ = (id) => document.getElementById(id);
+const screens = ['home', 'lobby', 'game', 'over'];
+function show(name) {
+  screens.forEach((s) => $(s).classList.toggle('active', s === name));
+  $('fx').style.display = (name === 'home' || name === 'lobby') ? 'block' : 'none';
+}
+
+const PALETTE = ['#00e5ff', '#ff2d95', '#7cff4f', '#ffd23f', '#a06bff', '#ff7a29', '#38ffc7', '#ff5c5c'];
+
+const state = {
+  ws: null, me: null, code: null, phase: 'lobby',
+  lobby: null, setup: null, myColor: '#00e5ff',
+  supporting: null, alive: true, lives: 3,
+  reconnectTries: 0, sending: false,
+};
+
+/* ------------------------------------------------------------ storage */
+const store = {
+  get(k, d) { try { return sessionStorage.getItem(k) ?? d; } catch (_) { return d; } },
+  set(k, v) { try { sessionStorage.setItem(k, v); } catch (_) {} },
+  del(k) { try { sessionStorage.removeItem(k); } catch (_) {} },
+};
+
+/* ------------------------------------------------------------ socket */
+function connect(then) {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}`);
+  state.ws = ws;
+  ws.onopen = () => { state.reconnectTries = 0; then && then(); };
+  ws.onmessage = (e) => {
+    let m; try { m = JSON.parse(e.data); } catch (_) { return; }
+    handle(m);
+  };
+  ws.onclose = () => {
+    if (state.code && state.me && state.reconnectTries < 12) {
+      state.reconnectTries++;
+      setTimeout(() => connect(() => send({ t: 'join', code: state.code, token: state.me.token, name: state.me.name })),
+        400 * state.reconnectTries);
+    }
+  };
+  ws.onerror = () => {};
+  return ws;
+}
+
+function send(msg) {
+  if (state.ws && state.ws.readyState === 1) state.ws.send(JSON.stringify(msg));
+}
+
+/* ------------------------------------------------------------ handlers */
+function handle(m) {
+  switch (m.t) {
+    case 'joined':
+      state.me = m.you;
+      state.code = m.code;
+      state.myColor = m.you.color;
+      store.set('pr_token', m.you.token);
+      store.set('pr_code', m.code);
+      store.set('pr_name', m.you.name);
+      break;
+
+    case 'lobby':
+      state.lobby = m;
+      state.phase = m.phase;
+      if (m.phase === 'lobby') { show('lobby'); GFX.stop(); CEREMONY.stop(); }
+      renderLobby(m);
+      break;
+
+    case 'setup':
+      state.setup = m;
+      GFX.setup(m, state.me.id);
+      GFX.start();
+      show('game');
+      $('supportPanel').classList.add('hidden');
+      state.supporting = null;
+      state.alive = true;
+      buildHud();
+      break;
+
+    case 'countdown':
+      big(m.n > 0 ? String(m.n) : 'GO!', state.myColor);
+      SFX.count(m.n);
+      break;
+
+    case 'go':
+      break;
+
+    case 's':
+      onState(m);
+      break;
+
+    case 'over':
+      showCeremony(m);
+      break;
+
+    case 'error':
+      $('homeErr').textContent = m.msg;
+      if (!state.me) {
+        // a stale rejoin: forget it so we do not loop
+        state.code = null;
+        store.del('pr_token'); store.del('pr_code');
+        show('home');
+      }
+      break;
+  }
+}
+
+/* ------------------------------------------------------------ lobby UI */
+function renderLobby(m) {
+  $('lobbyCode').textContent = m.code;
+  $('playerCount').textContent = `${m.players.length}/${m.maxPlayers}`;
+  const list = $('playerList');
+  list.innerHTML = '';
+  m.players.forEach((p) => {
+    const row = document.createElement('div');
+    row.className = 'prow';
+    row.innerHTML = `
+      <span class="dot" style="background:${p.color};box-shadow:0 0 12px ${p.color}"></span>
+      <span class="pname">${escapeHtml(p.name)}</span>
+      ${p.host ? '<span class="tag">host</span>' : ''}
+      ${p.id === (state.me && state.me.id) ? '<span class="tag you">jij</span>' : ''}
+      ${p.connected ? '' : '<span class="tag">weg</span>'}`;
+    list.appendChild(row);
+  });
+
+  const iAmHost = state.me && m.hostId === state.me.id;
+  const enough = m.players.length >= m.minPlayers;
+  $('btnStart').style.display = iAmHost ? '' : 'none';
+  $('btnStart').disabled = !enough;
+  $('startHint').textContent = iAmHost
+    ? (enough ? 'Iedereen binnen? Druk op start.' : `Minimaal ${m.minPlayers} spelers nodig.`)
+    : 'Wachten tot de host start...';
+
+  // colours
+  const taken = new Set(m.players.filter((p) => !state.me || p.id !== state.me.id).map((p) => p.color));
+  const cp = $('colorPicker');
+  cp.innerHTML = '';
+  PALETTE.forEach((hex, i) => {
+    const b = document.createElement('button');
+    b.className = 'swatch' + (hex === (state.me && state.myColor) ? ' on' : '') + (taken.has(hex) ? ' taken' : '');
+    b.style.background = hex;
+    b.onclick = () => { send({ t: 'color', i }); state.myColor = hex; };
+    cp.appendChild(b);
+  });
+  const meRow = m.players.find((p) => state.me && p.id === state.me.id);
+  if (meRow) state.myColor = meRow.color;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/* ------------------------------------------------------------ game HUD */
+function buildHud() {
+  const me = state.setup.players.find((p) => p.id === state.me.id);
+  $('hudName').textContent = me ? me.name : '';
+  $('hudName').style.color = me ? me.color : '#fff';
+  const lv = $('hudLives');
+  lv.style.color = me ? me.color : '#fff';
+  lv.innerHTML = '';
+  for (let i = 0; i < state.setup.lives; i++) {
+    const d = document.createElement('span');
+    d.className = 'life';
+    lv.appendChild(d);
+  }
+}
+
+function onState(m) {
+  state.phase = m.ph;
+  GFX.update(m);
+  GFX.handleEvents(m.ev);
+
+  const row = m.p.find((r) => r[0] === state.me.id);
+  if (!row) return;
+  const lives = row[2], hype = row[3], superMs = row[4], alive = !!row[5];
+
+  const pips = $('hudLives').children;
+  for (let i = 0; i < pips.length; i++) pips[i].classList.toggle('off', i >= lives);
+  $('hypeBar').style.width = (superMs > 0 ? 100 : hype) + '%';
+  $('hypeWrap').style.opacity = alive ? 1 : .25;
+
+  if (alive !== state.alive) {
+    state.alive = alive;
+    if (!alive) enterSupportMode(m);
+  }
+  if (!alive) refreshSupportList(m);
+}
+
+/* ------------------------------------------------------------ support */
+function enterSupportMode(m) {
+  $('supportPanel').classList.remove('hidden');
+  GFX.setSpectator(true);
+  toast('Je ligt eruit. Kies een held en juich hem naar de winst.');
+}
+
+function refreshSupportList(m) {
+  const wrap = $('supportList');
+  const aliveIds = m.p.filter((r) => r[5] === 1).map((r) => r[0]);
+  const sig = aliveIds.join(',') + '|' + state.supporting;
+  if (wrap.dataset.sig === sig) return;
+  wrap.dataset.sig = sig;
+  wrap.innerHTML = '';
+  aliveIds.forEach((id) => {
+    const p = state.setup.players.find((x) => x.id === id);
+    if (!p) return;
+    const b = document.createElement('button');
+    b.className = 'pick' + (state.supporting === id ? ' on' : '');
+    b.style.color = p.color;
+    b.textContent = p.name;
+    b.onclick = () => {
+      state.supporting = id;
+      send({ t: 'support', id });
+      GFX.setViewSeat(p.seat);
+      $('btnCheer').classList.remove('hidden');
+      $('btnCheer').textContent = 'JUICH VOOR ' + p.name.toUpperCase();
+      wrap.dataset.sig = '';
+      refreshSupportList(m);
+    };
+    wrap.appendChild(b);
+  });
+  if (state.supporting && !aliveIds.includes(state.supporting)) {
+    state.supporting = null;
+    $('btnCheer').classList.add('hidden');
+    toast('Je held ligt eruit. Kies een nieuwe.');
+  }
+}
+
+/* ------------------------------------------------------------ ceremony */
+function showCeremony(m) {
+  GFX.stop();
+  show('over');
+  const win = m.podium.find((p) => p.rank === 1);
+  const color = win ? win.color : '#00e5ff';
+  $('champName').textContent = win ? win.name : 'Niemand';
+  $('champName').style.color = color;
+  $('champName').style.textShadow = `0 0 30px ${color}, 0 0 70px ${color}`;
+  const mins = Math.floor(m.duration / 60), secs = Math.round(m.duration % 60);
+  const fans = win && win.fans.length ? ` &middot; aangemoedigd door ${escapeHtml(win.fans.join(', '))}` : '';
+  $('champSub').innerHTML = `${win ? win.saves : 0} saves &middot; potje van ${mins ? mins + 'm ' : ''}${secs}s${fans}`;
+
+  const medals = ['&#129351;', '&#129352;', '&#129353;'];
+  const st = $('podiumStats');
+  st.innerHTML = '';
+  m.podium.forEach((p) => {
+    const row = document.createElement('div');
+    row.className = 'srow';
+    row.innerHTML = `
+      <span class="srank">${p.rank <= 3 ? medals[p.rank - 1] : p.rank + '.'}</span>
+      <span class="dot" style="background:${p.color};box-shadow:0 0 10px ${p.color}"></span>
+      <span class="sname">${escapeHtml(p.name)}</span>
+      <span class="sval">${p.saves} saves &middot; ${p.supers}&times; super</span>`;
+    st.appendChild(row);
+  });
+
+  const iAmHost = state.lobby && state.me && state.lobby.hostId === state.me.id;
+  $('btnAgain').style.display = iAmHost ? '' : 'none';
+
+  CEREMONY.start($('ceremony'), color, m.podium.map((p) => p.color));
+  SFX.fanfare();
+}
+
+/* ------------------------------------------------------------ overlays */
+let bigTimer = null;
+function big(text, color) {
+  const el = $('bigText');
+  el.textContent = text;
+  el.style.color = color || '#fff';
+  el.style.textShadow = `0 0 30px ${color || '#0ef'}`;
+  el.style.transition = 'none';
+  el.style.opacity = '1';
+  el.style.transform = 'scale(1.25)';
+  requestAnimationFrame(() => {
+    el.style.transition = 'opacity .55s ease, transform .55s cubic-bezier(.2,.9,.3,1)';
+    el.style.opacity = '0';
+    el.style.transform = 'scale(.85)';
+  });
+  clearTimeout(bigTimer);
+  bigTimer = setTimeout(() => { el.style.opacity = '0'; }, 700);
+}
+
+let toastTimer = null;
+function toast(text) {
+  const el = $('toast');
+  el.textContent = text;
+  el.style.opacity = '1';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.style.opacity = '0'; }, 2200);
+}
+
+GFX.onAnnounce((text, color) => toast(text));
+
+/* ------------------------------------------------------------ input */
+function bindInput() {
+  const board = $('board');
+  let active = false;
+
+  const point = (e) => {
+    const r = board.getBoundingClientRect();
+    const p = e.touches ? e.touches[0] : e;
+    return { x: p.clientX - r.left, y: p.clientY - r.top };
+  };
+  const move = (e) => {
+    if (!active) return;
+    e.preventDefault();
+    const { x, y } = point(e);
+    GFX.setLocalTarget(GFX.paddleParamFromScreen(x, y));
+  };
+
+  board.addEventListener('touchstart', (e) => { active = true; SFX.boot(); move(e); }, { passive: false });
+  board.addEventListener('touchmove', move, { passive: false });
+  board.addEventListener('touchend', () => { active = false; });
+  board.addEventListener('mousedown', (e) => { active = true; SFX.boot(); move(e); });
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', () => { active = false; });
+
+  // keyboard for laptops
+  const keys = {};
+  window.addEventListener('keydown', (e) => {
+    keys[e.key] = true;
+    if (e.key === ' ' && !$('btnCheer').classList.contains('hidden')) doCheer();
+  });
+  window.addEventListener('keyup', (e) => { keys[e.key] = false; });
+  setInterval(() => {
+    let d = 0;
+    if (keys.ArrowLeft || keys.a || keys.A) d -= 1;
+    if (keys.ArrowRight || keys.d || keys.D) d += 1;
+    if (d) GFX.setLocalTarget(GFX.getLocalTarget() + d * 0.028);
+  }, 16);
+
+  // send input at ~30Hz
+  let last = -1;
+  setInterval(() => {
+    const t = GFX.getLocalTarget();
+    if (Math.abs(t - last) > 0.0015) { last = t; send({ t: 'in', p: t }); }
+  }, 33);
+}
+
+function doCheer() {
+  send({ t: 'cheer' });
+  SFX.cheer();
+  const b = $('btnCheer');
+  b.style.transform = 'scale(.93)';
+  setTimeout(() => { b.style.transform = ''; }, 70);
+  if (navigator.vibrate) navigator.vibrate(12);
+}
+
+/* ------------------------------------------------------------ buttons */
+function bindUI() {
+  const nameEl = $('nameInput');
+  nameEl.value = store.get('pr_name', '') || '';
+
+  $('btnCreate').onclick = () => {
+    SFX.boot();
+    $('homeErr').textContent = '';
+    connect(() => send({ t: 'create', name: nameEl.value }));
+  };
+
+  $('btnJoin').onclick = () => {
+    SFX.boot();
+    const code = $('codeInput').value.trim().toUpperCase();
+    if (code.length < 4) { $('homeErr').textContent = 'Vul een code van 4 tekens in'; return; }
+    $('homeErr').textContent = '';
+    state.code = code;
+    connect(() => send({ t: 'join', code, name: nameEl.value }));
+  };
+
+  $('codeInput').addEventListener('input', (e) => {
+    e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+  });
+
+  $('btnStart').onclick = () => { SFX.boot(); send({ t: 'start' }); };
+  $('btnAgain').onclick = () => { CEREMONY.stop(); send({ t: 'again' }); };
+  $('btnHome').onclick = () => { store.del('pr_token'); location.href = location.pathname; };
+  $('btnLeave').onclick = () => { store.del('pr_token'); location.href = location.pathname; };
+  $('btnCheer').onclick = doCheer;
+
+  $('btnSound').onclick = () => {
+    const on = SFX.toggle();
+    $('btnSound').classList.toggle('off', !on);
+  };
+
+  $('btnShare').onclick = async () => {
+    const url = joinUrl();
+    try {
+      if (navigator.share) await navigator.share({ title: 'PONG ROYALE', text: `Doe mee! Code ${state.code}`, url });
+      else { await navigator.clipboard.writeText(url); $('startHint').textContent = 'Link gekopieerd!'; }
+    } catch (_) {}
+  };
+
+  $('btnQR').onclick = () => {
+    const wrap = $('qrWrap');
+    if (!wrap.classList.contains('hidden')) { wrap.classList.add('hidden'); return; }
+    wrap.classList.remove('hidden');
+    $('qrUrl').textContent = joinUrl();
+    if (window.QRCode) return drawQR();
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    s.onload = drawQR;
+    s.onerror = () => { $('qrUrl').textContent = joinUrl() + ' (QR kon niet laden)'; };
+    document.head.appendChild(s);
+  };
+}
+
+function joinUrl() {
+  return `${location.origin}${location.pathname}?c=${state.code || ''}`;
+}
+
+function drawQR() {
+  const box = $('qr');
+  box.innerHTML = '';
+  new window.QRCode(box, { text: joinUrl(), width: 190, height: 190, correctLevel: window.QRCode.CorrectLevel.M });
+}
+
+/* ------------------------------------------------------------ boot */
+window.addEventListener('load', () => {
+  GFX.initBoard($('board'));
+  bindUI();
+  bindInput();
+  show('home');
+
+  const params = new URLSearchParams(location.search);
+  const c = (params.get('c') || '').toUpperCase();
+  if (c) $('codeInput').value = c.slice(0, 4);
+
+  // try to rejoin an interrupted session
+  const token = store.get('pr_token', null);
+  const savedCode = store.get('pr_code', null);
+  if (token && savedCode) {
+    state.code = savedCode;
+    connect(() => send({ t: 'join', code: savedCode, token, name: store.get('pr_name', 'Speler') }));
+  }
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) GFX.resize();
+});
+
+window.__handle = handle; // debug/test hook
