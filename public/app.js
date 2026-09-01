@@ -16,6 +16,7 @@ const state = {
   lobby: null, setup: null, myColor: '#00e5ff',
   supporting: null, alive: true, lives: 3,
   reconnectTries: 0, sending: false,
+  gen: 0, busy: false,
 };
 
 /* ------------------------------------------------------------ storage */
@@ -25,27 +26,93 @@ const store = {
   del(k) { try { sessionStorage.removeItem(k); } catch (_) {} },
 };
 
+/* ------------------------------------------------------------ status */
+let netTimer = null;
+function setNet(text, dood) {
+  const el = $('netBanner');
+  clearTimeout(netTimer);
+  if (!text) { el.classList.add('hidden'); return; }
+  el.textContent = text;
+  el.classList.toggle('dood', !!dood);
+  el.classList.remove('hidden');
+}
+
+function busy(on, label) {
+  state.busy = on;
+  ['btnCreate', 'btnJoin'].forEach((id) => { $(id).disabled = on; });
+  $('btnJoin').textContent = on && label === 'join' ? 'Verbinden...' : 'Meedoen';
+  $('btnCreate').textContent = on && label === 'create' ? 'Verbinden...' : 'Nieuw spel starten';
+}
+
 /* ------------------------------------------------------------ socket */
-function connect(then) {
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const ws = new WebSocket(`${proto}://${location.host}`);
+function connect(then, onFail) {
+  const gen = ++state.gen;                       // alleen de nieuwste socket telt
+  if (state.ws) { try { state.ws.onclose = null; state.ws.close(); } catch (_) {} }
+
+  let ws;
+  try {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${proto}://${location.host}`);
+  } catch (_) {
+    onFail && onFail('Kan geen verbinding maken met de server.');
+    return null;
+  }
   state.ws = ws;
-  ws.onopen = () => { state.reconnectTries = 0; then && then(); };
+
+  const traag = setTimeout(() => {
+    if (state.gen === gen && ws.readyState !== 1) {
+      setNet('Server wordt wakker, even geduld...');
+    }
+  }, 2500);
+
+  const opgeven = setTimeout(() => {
+    if (state.gen !== gen || ws.readyState === 1) return;
+    try { ws.onclose = null; ws.close(); } catch (_) {}
+    setNet(null);
+    onFail && onFail('Geen verbinding met de server. Probeer het zo nog een keer.');
+  }, 20000);
+
+  const opruimen = () => { clearTimeout(traag); clearTimeout(opgeven); };
+
+  ws.onopen = () => {
+    opruimen();
+    if (state.gen !== gen) { try { ws.close(); } catch (_) {} return; }
+    state.reconnectTries = 0;
+    setNet(null);
+    then && then();
+  };
+
   ws.onmessage = (e) => {
+    if (state.gen !== gen) return;               // bericht van een oude socket
     let m; try { m = JSON.parse(e.data); } catch (_) { return; }
     handle(m);
   };
+
+  ws.onerror = () => {};                          // onclose volgt altijd
+
   ws.onclose = () => {
-    if (state.code && state.me && state.reconnectTries < 12) {
-      state.reconnectTries++;
-      setTimeout(() => connect(() => send({ t: 'join', code: state.code, token: state.me.token, name: state.me.name })),
-        400 * state.reconnectTries);
+    opruimen();
+    if (state.gen !== gen) return;                // vervangen door een nieuwere
+
+    if (!state.me) {                              // we zaten nog nergens in
+      setNet(null);
+      onFail && onFail('De verbinding viel weg voordat je binnen was. Probeer opnieuw.');
+      return;
     }
+    if (state.reconnectTries >= 12) {
+      setNet('Verbinding kwijt. Ververs de pagina.', true);
+      return;
+    }
+    state.reconnectTries++;
+    setNet('Verbinding kwijt, opnieuw verbinden...');
+    setTimeout(() => connect(
+      () => send({ t: 'join', code: state.code, token: state.me.token, name: state.me.name }),
+      onFail
+    ), Math.min(4000, 400 * state.reconnectTries));
   };
-  ws.onerror = () => {};
+
   return ws;
 }
-
 function send(msg) {
   if (state.ws && state.ws.readyState === 1) state.ws.send(JSON.stringify(msg));
 }
@@ -60,6 +127,9 @@ function handle(m) {
       store.set('pr_token', m.you.token);
       store.set('pr_code', m.code);
       store.set('pr_name', m.you.name);
+      store.set('pr_at', String(Date.now()));
+      busy(false);
+      setNet(null);
       break;
 
     case 'lobby':
@@ -98,6 +168,8 @@ function handle(m) {
       break;
 
     case 'error':
+      busy(false);
+      setNet(null);
       $('homeErr').textContent = m.msg;
       if (!state.me) {
         // a stale rejoin: forget it so we do not loop
@@ -359,23 +431,41 @@ function doCheer() {
 }
 
 /* ------------------------------------------------------------ buttons */
+function vergeetSessie() {
+  state.me = null;
+  state.code = null;
+  state.reconnectTries = 0;
+  store.del('pr_token'); store.del('pr_code'); store.del('pr_at');
+}
+
+function toonFout(msg) {
+  busy(false);
+  $('homeErr').textContent = msg;
+}
+
 function bindUI() {
   const nameEl = $('nameInput');
   nameEl.value = store.get('pr_name', '') || '';
 
   $('btnCreate').onclick = () => {
+    if (state.busy) return;
     SFX.boot();
     $('homeErr').textContent = '';
-    connect(() => send({ t: 'create', name: nameEl.value }));
+    vergeetSessie();
+    busy(true, 'create');
+    connect(() => send({ t: 'create', name: nameEl.value }), toonFout);
   };
 
   $('btnJoin').onclick = () => {
+    if (state.busy) return;
     SFX.boot();
     const code = $('codeInput').value.trim().toUpperCase();
-    if (code.length < 4) { $('homeErr').textContent = 'Vul een code van 4 tekens in'; return; }
+    if (code.length < 4) { $('homeErr').textContent = 'Vul de code van 4 tekens in'; return; }
     $('homeErr').textContent = '';
+    vergeetSessie();
     state.code = code;
-    connect(() => send({ t: 'join', code, name: nameEl.value }));
+    busy(true, 'join');
+    connect(() => send({ t: 'join', code, name: nameEl.value }), toonFout);
   };
 
   $('codeInput').addEventListener('input', (e) => {
@@ -437,12 +527,22 @@ window.addEventListener('load', () => {
   const c = (params.get('c') || '').toUpperCase();
   if (c) $('codeInput').value = c.slice(0, 4);
 
-  // try to rejoin an interrupted session
+  // Alleen terugspringen in een potje dat NET nog liep en waar deze link ook over gaat.
+  // Anders sleep je een oude room mee en lijkt het alsof meedoen niets doet.
   const token = store.get('pr_token', null);
   const savedCode = store.get('pr_code', null);
-  if (token && savedCode) {
+  const savedAt = Number(store.get('pr_at', 0)) || 0;
+  const vers = Date.now() - savedAt < 10 * 60 * 1000;
+  const zelfdeRoom = !c || c === savedCode;
+
+  if (token && savedCode && vers && zelfdeRoom) {
     state.code = savedCode;
-    connect(() => send({ t: 'join', code: savedCode, token, name: store.get('pr_name', 'Speler') }));
+    connect(
+      () => send({ t: 'join', code: savedCode, token, name: store.get('pr_name', 'Speler') }),
+      () => { vergeetSessie(); show('home'); }
+    );
+  } else if (token) {
+    vergeetSessie();
   }
 });
 

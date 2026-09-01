@@ -216,3 +216,16 @@ body{
   width:26px;height:26px;border-radius:8px;cursor:pointer;font:inherit;font-size:15px;line-height:1;flex:none
 }
 .kick:active{color:#ff6b6b;border-color:#ff6b6b}
+
+.netbanner{
+  position:fixed;z-index:50;left:50%;transform:translateX(-50%);
+  top:max(8px,env(safe-area-inset-top));
+  padding:9px 16px;border-radius:99px;font-size:13px;letter-spacing:.04em;
+  background:rgba(255,180,60,.16);border:1px solid rgba(255,180,60,.5);color:#ffd27a;
+  backdrop-filter:blur(6px);white-space:nowrap;pointer-events:none;
+}
+.netbanner.dood{background:rgba(255,90,90,.16);border-color:rgba(255,90,90,.5);color:#ff9d9d}
+.err{
+  color:#ff8080;font-size:14px;min-height:18px;text-align:center;
+  line-height:1.35;padding:0 4px;
+}
