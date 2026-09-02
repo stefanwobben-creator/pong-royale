@@ -429,20 +429,36 @@ function bindInput() {
   window.addEventListener('mousemove', move);
   window.addEventListener('mouseup', () => { active = false; });
 
-  // keyboard for laptops
-  const keys = {};
-  window.addEventListener('keydown', (e) => {
-    keys[e.key] = true;
-    if (e.key === ' ' && !$('btnCheer').classList.contains('hidden')) doCheer();
-  });
-  window.addEventListener('keyup', (e) => { keys[e.key] = false; });
-  setInterval(() => {
-    let d = 0;
-    if (keys.ArrowLeft || keys.a || keys.A) d -= 1;
-    if (keys.ArrowRight || keys.d || keys.D) d += 1;
-    if (d) GFX.nudgeTarget(d, 0.028);
-  }, 16);
+  // toetsenbord: ingedrukt houden = volle snelheid, net als bij een bot
+  const LINKS = new Set(['ArrowLeft', 'a', 'A']);
+  const RECHTS = new Set(['ArrowRight', 'd', 'D']);
+  const ingedrukt = new Set();
 
+  const stuur = () => {
+    let dir = 0;
+    for (const k of ingedrukt) {
+      if (LINKS.has(k)) dir -= 1;
+      if (RECHTS.has(k)) dir += 1;
+    }
+    GFX.keyHold(Math.sign(dir));
+  };
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === ' ' && !$('btnCheer').classList.contains('hidden')) { doCheer(); return; }
+    if (!LINKS.has(e.key) && !RECHTS.has(e.key)) return;
+    if (e.repeat) return;
+    e.preventDefault();
+    SFX.boot();
+    ingedrukt.add(e.key);
+    stuur();
+  });
+
+  window.addEventListener('keyup', (e) => {
+    if (!ingedrukt.delete(e.key)) return;
+    stuur();
+  });
+
+  window.addEventListener('blur', () => { ingedrukt.clear(); stuur(); });
   // send input at ~30Hz
   let last = -1;
   setInterval(() => {

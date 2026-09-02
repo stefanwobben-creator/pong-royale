@@ -72,6 +72,7 @@ const GFX = (() => {
     canvas: null, ctx: null, dpr: 1, W: 0, H: 0,
     arena: null, players: new Map(), order: [],
     lives: 3, paddleHalf: .105, paddleHalfSuper: .165, ballRadius: .03,
+    paddleSpeed: 2.1, paddleSpeedSuper: 2.9,
     snap: null, prev: null, snapAt: 0,
     meId: null, viewSeat: 0,
     localPaddle: .5, localTarget: .5,
@@ -129,6 +130,8 @@ const GFX = (() => {
     S.paddleHalf = msg.paddleHalf;
     S.paddleHalfSuper = msg.paddleHalfSuper;
     S.ballRadius = msg.ballRadius;
+    if (msg.paddleSpeed) S.paddleSpeed = msg.paddleSpeed;
+    if (msg.paddleSpeedSuper) S.paddleSpeedSuper = msg.paddleSpeedSuper;
     S.meId = meId;
     S.players = new Map();
     S.order = [];
@@ -189,6 +192,16 @@ const GFX = (() => {
     const dx = e.bx - e.ax, dy = e.by - e.ay;
     const sx = dx * Math.cos(S.rot) - dy * Math.sin(S.rot);
     return sx < 0 ? -1 : 1;
+  }
+
+  /**
+   * Toets ingedrukt houden: mik meteen op het uiteinde van je wand, zodat de
+   * peddel op VOLLE snelheid loopt in plaats van mee te kruipen met een timer.
+   * dir: -1 links, +1 rechts, 0 losgelaten.
+   */
+  function keyHold(dir) {
+    if (!dir) { setLocalTarget(S.localPaddle); return; }
+    setLocalTarget(dir * screenDirSign() > 0 ? 1 : 0);
   }
 
   /** toets- of stickinvoer: dir is +1 voor rechts op het scherm, -1 voor links */
@@ -616,7 +629,7 @@ const GFX = (() => {
     const me = S.players.get(S.meId);
     const superOn = me && me.super > 0;
     const half = superOn ? S.paddleHalfSuper : S.paddleHalf;
-    const spd = superOn ? 2.4 : 1.7;
+    const spd = superOn ? S.paddleSpeedSuper : S.paddleSpeed;
     const tgt = Math.max(half, Math.min(1 - half, S.localTarget));
     const d = tgt - S.localPaddle;
     const step = spd * dt;
@@ -674,7 +687,7 @@ const GFX = (() => {
   return {
     initBoard, setup, update, start, stop, resize,
     setLocalTarget, getLocalTarget, paddleParamFromScreen, setSpectator,
-    nudgeTarget, screenDirSign,
+    nudgeTarget, screenDirSign, keyHold,
     handleEvents: (l) => handleEvents(l, bigCb), onAnnounce,
     setViewSeat,
     players: () => S.players,

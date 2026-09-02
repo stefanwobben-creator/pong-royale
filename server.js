@@ -33,8 +33,8 @@ const CFG = {
   paddleHalfMin: 0.042,    // paddles shrink late in a round so nothing stalls
   shrinkStart: 40,         // sec
   shrinkPerSec: 0.0007,
-  paddleSpeed: 1.7,       // wall-fractions per second
-  paddleSpeedSuper: 2.4,
+  paddleSpeed: 2.1,       // wall-fractions per second
+  paddleSpeedSuper: 2.9,
   respawnDelay: 0.8,      // sec after a goal before a new ball appears
   maxBalls: 3,
   extraBallAt: 25,        // sec into the round
@@ -48,9 +48,10 @@ const CFG = {
   countdown: 3,
   roomTTL: 30 * 60 * 1000,
   botLevels: [
-    { name: 'Makkelijk', reaction: 0.34, gain: 0.60, error: 0.10 },
-    { name: 'Normaal',   reaction: 0.17, gain: 0.85, error: 0.05 },
-    { name: 'Sterk',     reaction: 0.07, gain: 1.00, error: 0.02 },
+    { name: 'Makkelijk', reaction: 0.34, gain: 0.60, error: 0.100 },
+    { name: 'Normaal',   reaction: 0.24, gain: 0.74, error: 0.075 },
+    { name: 'Pittig',    reaction: 0.17, gain: 0.86, error: 0.050 },
+    { name: 'Sterk',     reaction: 0.08, gain: 1.00, error: 0.020 },
   ],
 };
 
@@ -298,6 +299,8 @@ class Room {
       lives: CFG.lives,
       paddleHalf: CFG.paddleHalf,
       paddleHalfSuper: CFG.paddleHalfSuper,
+      paddleSpeed: CFG.paddleSpeed,
+      paddleSpeedSuper: CFG.paddleSpeedSuper,
       ballRadius: CFG.ballRadius,
       players: this.list().map((p) => ({
         id: p.id,

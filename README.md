@@ -84,7 +84,8 @@ Bovenin `server.js` staat een `CFG`-blok. Interessant om mee te spelen:
 | `rampStart` / `rampPerSec` | 20 / 0.018 | Vanaf wanneer en hoe snel de bal vanzelf harder gaat |
 | `hypePerCheer` / `superCooldown` | 4 / 12000 | Hoeveel invloed supporters hebben |
 | `maxPlayers` | 8 | Meer spelers = meer wanden (tot 8 is nog te volgen op een telefoon) |
-| `botLevels` | 3 niveaus | Reactietijd, volggedrag en mikfout van de oefenbots |
+| `botLevels` | 4 niveaus | Reactietijd, volggedrag en mikfout van de oefenbots |
+| `paddleSpeed` | 2.1 | Hoe snel elke peddel maximaal langs zijn wand schuift |
 
 ## Alleen testen: oefenbots
 
@@ -92,14 +93,20 @@ In de lobby ziet de host een niveaukiezer en de knop **+ Oefenbot**. Elke bot is
 server zelf aanstuurt: hij krijgt een eigen wand, kleur en levens, en gaat na zijn eliminatie
 supporteren en juichen net als een mens. Zo kun je in je eentje een heel potje spelen.
 
-| Niveau | Reactietijd | Mikfout | Voor wie |
-| --- | --- | --- | --- |
-| Makkelijk | 0.34s | ±10% van de wand | eerste keer spelen, of kinderen |
-| Normaal | 0.17s | ±5% | een eerlijke tegenstander |
-| Sterk | 0.07s | ±2% | testen of het spel wel afloopt |
+| Niveau | Reactietijd | Mikt op | Mikfout | Tegen een gemiddelde speler |
+| --- | --- | --- | --- | --- |
+| Makkelijk | 0.34s | 60% van de wand | ±10% | speler wint ruim, potje van ~15s |
+| Normaal | 0.24s | 74% | ±7,5% | speler wint net, potje van ~40s |
+| Pittig | 0.17s | 86% | ±5% | bot wint net, potje van ~55s |
+| Sterk | 0.08s | 100% | ±2% | bot wint, om te testen of een potje afloopt |
 
 Bots voorspellen waar de bal hun wand raakt door hem rechtdoor door te trekken. Ze houden geen
-rekening met stuiteringen tegen andere wanden, dus ze blijven te verslaan.
+rekening met stuiteringen tegen andere wanden, dus ze blijven te verslaan. De tabel hierboven komt
+uit `test/balans.js`, die een nagebootste speler 1-tegen-1 tegen elk niveau zet.
+
+Peddels lopen allemaal even snel, mens en bot. Met de pijltjestoetsen mik je op het uiteinde van je
+wand zolang je de toets vasthoudt, zodat je altijd op volle snelheid schuift; `test/snelheid.js`
+meet dat na.
 
 Het kruisje achter een bot haalt hem weer weg. Bots tellen mee voor het minimum van twee spelers,
 maar houden een room niet in leven: zodra de laatste mens weg is, ruimt de server hem op.
